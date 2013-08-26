@@ -28,7 +28,7 @@ Install bundle through composer:
 
 ### Configuration
 
-This will be the default configuration if you skip it in your `app/config.yml`
+This will be the default configuration. If you want you can override these in `app/config.yml`
 
 ```yaml
 supertag_gearman:
@@ -49,6 +49,14 @@ public function registerBundles()
     );
 }
 ```
+
+If your install is successful, you should see these commands available:
+
+    php app/console
+
+Should contain:
+
+![Listed commands](https://raw.github.com/supertag/GearmanBundle/master/Resources/screenshots/commands.png)
 
 ## Usage
 
@@ -124,15 +132,36 @@ class ContactController extends Controller
 }
 ```
 
-Now to check if the job was successfully registered:
+### Commands
+
+To check all registered jobs:
 
     php app/console supertag:gearman:list-jobs
 
-You should see a mailing job described in console output.
+You should see your jobs listed similar to this:
+
+![Screenshot of listed gearman jobs](https://raw.github.com/supertag/GearmanBundle/master/Resources/screenshots/job_list.png)
+
 To start gearman worker, run:
 
     php app/console supertag:gearman:run-worker
 
 It will listen to all registered jobs and wait for any schedule.
 
+A screenshot of successful job processing:
+
+![Screenshot of gearman job](https://raw.github.com/supertag/GearmanBundle/master/Resources/screenshots/normal_job.png)
+
+A screenshot of a failing job, which fires retries and reschedules a job as low priority background job.
+Any exception within a job function will cause it to retry.
+
+![Screenshot of retried job](https://raw.github.com/supertag/GearmanBundle/master/Resources/screenshots/retries.png)
+
+You can monitor a gearman queue:
+
+![Screenshot - monitor queue](https://raw.github.com/supertag/GearmanBundle/master/Resources/screenshots/monitor.png)
+
+If you wish to have a script which would ping you in case if queue gets overloaded, you could implement it based on that
+command to poll status of gearman queue and check if jobs are piling up. The solution to this hardly can be abstracted,
+it would be best to customize it individually.
 
