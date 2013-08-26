@@ -36,7 +36,7 @@ serverurl=unix:///%project_dir%/supervisord.sock ; use a unix:// URL  for a unix
 
 [program:worker]
 command=/usr/bin/php %project_dir%/app/console supertag:gearman:run-worker --env=%env%
-process_name=tms_worker
+process_name=%namespace%gearman_worker
 numprocs=1
 directory=%project_dir%
 autostart=true
@@ -70,8 +70,9 @@ EOF
         $project_dir = realpath($this->getContainer()->getParameter('kernel.root_dir') . '/..');
         $root_dir = realpath($this->getContainer()->getParameter('kernel.root_dir'));
         $env = $this->getContainer()->getParameter('kernel.environment');
+        $namespace = $this->getContainer()->getParameter('supertag_gearman.namespace');
 
-        $replace = compact('project_dir', 'root_dir', 'user', 'env');
+        $replace = compact('project_dir', 'root_dir', 'user', 'env', 'namespace');
         $content = str_replace(
             array_map(function($key) { return '%'.$key.'%'; }, array_keys($replace)),
             array_values($replace),
