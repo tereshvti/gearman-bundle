@@ -14,6 +14,6 @@ class SomeWorker
      */
     public function myGearmanJob(GearmanJob $job, OutputInterface $output)
     {
-        $output->writeLn("<comment>Successfully finished normal.gearman.job</comment>");
+        $output->writeLn("<comment>Successfully finished normal.gearman.job</comment> worload <info>{$job->workload()}</info>");
     }
 }
