@@ -25,6 +25,10 @@
         "necromant2005/gearman-stats": "1.0.*"
     },
 
+    "require-dev": {
+        "symfony/symfony": "2.2.*"
+    },
+
     "suggest": {
         "ext-gearman": "The PECL Gearman extension"
     },
@@ -35,5 +39,11 @@
         }
     },
 
-    "target-dir": "Supertag/Bundle/GearmanBundle"
+    "target-dir": "Supertag/Bundle/GearmanBundle",
+
+    "extra": {
+        "branch-alias": {
+            "dev-master": "0.1.x-dev"
+        }
+    }
 }
