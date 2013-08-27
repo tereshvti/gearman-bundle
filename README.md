@@ -165,3 +165,13 @@ If you wish to have a script which would ping you in case if queue gets overload
 command to poll status of gearman queue and check if jobs are piling up. The solution to this hardly can be abstracted,
 it would be best to customize it individually.
 
+## Run Tests
+
+To run tests you will need to have **gearman** installed on your system.
+Also you will need a **PHPUnit** 3.5 or higher.
+
+    curl -sS https://getcomposer.org/installer | php
+    php composer.phar install --dev
+    phpunit
+
+
