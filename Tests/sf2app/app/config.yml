@@ -1,0 +1,13 @@
+
+framework:
+    secret: "secret"
+
+supertag_gearman:
+    namespace: ""
+
+services:
+    my.gearman.listener:
+        class: Mock\Bundle\ApiBundle\Listener\GearmanListener
+        tags:
+          - { name: supertag_gearman.job_failed_event, event: onJobFailed }
+

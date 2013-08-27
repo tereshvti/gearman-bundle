@@ -2,3 +2,5 @@
 /composer.lock
 /composer.phar
 /phpunit.xml
+/Tests/sf2app/app/cache/*
+/Tests/sf2app/app/logs/*
