@@ -10,7 +10,10 @@ class JobQueueTest extends \PHPUnit_Framework_TestCase
     {
         $appDir = realpath(__DIR__ . '/../sf2app/app');
         $this->logFile = $appDir . '/logs/gearman-worker.log';
-
+        // make sure log directory is created
+        if (!is_dir($appDir . '/logs')) {
+            @mkdir($appDir . '/logs');
+        }
         // run gearman worker in the background
         exec($cmd = sprintf("%s/console supertag:gearman:run-worker --env=test > %s &", $appDir, $this->logFile));
         // get a pid
