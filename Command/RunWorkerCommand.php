@@ -7,6 +7,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Bundle\FrameworkBundle\Command\ContainerAwareCommand;
 use Symfony\Component\Finder\Finder;
 use Symfony\Component\HttpFoundation\ParameterBag;
+use Supertag\Bundle\GearmanBundle\Event\JobFailedEvent;
 use GearmanWorker;
 use GearmanJob;
 use RuntimeException, ReflectionClass, ReflectionMethod;
@@ -128,13 +129,14 @@ EOF
     private function registerWorkerJob($worker, $name, GearmanWorker $gmw, OutputInterface $output)
     {
         $job = $this->jobs[$name];
+        $disp = $this->getContainer()->get('event_dispatcher');
         $gmc = $this->getContainer()->get('supertag_gearman.client');
         $prefixedJobName = $gmc->getJobName($name);
         $retries = $this->retries;
 
         $output->writeLn("Registering job: <info>{$job['class']}::{$job['method']}</info> as <comment>{$name}</comment>");
 
-        $gmw->addFunction($prefixedJobName, function(GearmanJob $gmj) use ($job, $name, $gmc, $output, $worker, $retries) {
+        $gmw->addFunction($prefixedJobName, function(GearmanJob $gmj) use ($job, $name, $gmc, $output, $worker, $retries, $disp) {
             $result = null;
             $hash = sha1($name.$gmj->workload());
             try {
@@ -155,7 +157,9 @@ EOF
                     $gmc->doLowBackground($name, $gmj->workload());
                 } else {
                     $retries->remove($hash);
-                    // send to the database
+                    // fire an event to take some action with failed job
+                    $event = new JobFailedEvent($name, $job, $gmj->workload(), $e);
+                    $disp->dispatch(JobFailedEvent::NAME, $event);
                 }
                 return false;
             }
