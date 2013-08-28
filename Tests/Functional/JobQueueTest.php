@@ -61,13 +61,13 @@ class JobQueueTest extends \PHPUnit_Framework_TestCase
     private function createGearmanClient()
     {
         $gmc = new \GearmanClient;
-        $gmc->addServer(); // default at localhost:4730
+        $gmc->addServer('127.0.0.1', 4730);
         return $gmc;
     }
 
     private function assertReceivedGearmanMessage($msg)
     {
-        $retries = 10;
+        $retries = 30; // travis might be slow, wait max 30 seconds
         do {
             $result = stripos(file_get_contents($this->logFile), $msg) !== false;
         } while (!$result && --$retries && sleep(1) !== false);

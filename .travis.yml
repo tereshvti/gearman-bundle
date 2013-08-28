@@ -7,8 +7,8 @@ php:
 before_script:
   - sudo apt-get install gearman build-essential libevent-dev libboost-all-dev libgearman-dev
   - sudo ldconfig
-  - pecl install gearman
-  - echo "extension=gearman.so" >> `php --ini | grep "Loaded Configuration" | sed -e "s|.*:\s*||"`
+  - pecl install gearman-0.8.3
+  - composer self-update
   - composer install --dev --prefer-source --no-interaction
 
 script:
