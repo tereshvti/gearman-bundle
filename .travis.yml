@@ -5,8 +5,9 @@ php:
   - 5.5
 
 before_script:
-  - sudo apt-get install gearman build-essential libevent-dev libboost-all-dev
+  - sudo apt-get install gearman build-essential libevent-dev libboost-all-dev libgearman-dev
   - sudo ldconfig
+  - pecl install gearman
   - echo "extension=gearman.so" >> `php --ini | grep "Loaded Configuration" | sed -e "s|.*:\s*||"`
   - composer install --dev --prefer-source --no-interaction
 
