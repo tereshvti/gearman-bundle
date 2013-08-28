@@ -2,6 +2,8 @@
 
 Symfony2 bundle to manage and monitor PHP gearman jobs and queue.
 
+[![Build Status](https://travis-ci.org/supertag/GearmanBundle.png?branch=master)](https://travis-ci.org/supertag/GearmanBundle)
+
 ## Features
 
 - Support for a number of retries, which do not kill a worker, instead reschedules a job if exception was thrown.
