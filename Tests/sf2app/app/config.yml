@@ -4,10 +4,11 @@ framework:
 
 supertag_gearman:
     namespace: ""
+    servers: "127.0.0.1:4730"
 
 services:
     my.gearman.listener:
-        class: Mock\Bundle\ApiBundle\Listener\GearmanListener
+        class: Acme\Bundle\ApiBundle\Listener\GearmanListener
         tags:
           - { name: supertag_gearman.job_failed_event, event: onJobFailed }
 
