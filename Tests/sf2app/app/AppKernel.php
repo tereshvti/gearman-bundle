@@ -9,6 +9,7 @@ class AppKernel extends Kernel
     {
         return array(
             new Symfony\Bundle\FrameworkBundle\FrameworkBundle, // will reuse kernel event dispatcher
+            new Symfony\Bundle\MonologBundle\MonologBundle, // will use to log events
             new Acme\ContactBundle\AcmeContactBundle,
             new Acme\Bundle\ApiBundle\AcmeApiBundle,
             new Supertag\Bundle\GearmanBundle\SupertagGearmanBundle,

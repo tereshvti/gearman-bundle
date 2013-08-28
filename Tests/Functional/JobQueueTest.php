@@ -25,6 +25,9 @@ class JobQueueTest extends \PHPUnit_Framework_TestCase
     {
         exec("kill {$this->pid}");
         @unlink($this->logFile);
+        if (file_exists($appLogFile = dirname($this->logFile) . '/app.log')) {
+            @unlink($appLogFile);
+        }
     }
 
     /**
@@ -32,30 +35,33 @@ class JobQueueTest extends \PHPUnit_Framework_TestCase
      */
     function shouldRunScheduledJob()
     {
-        $this->assertReceivedGearmanMessage("Registering job: Acme\Bundle\ApiBundle\Worker\SomeWorker::myGearmanJob as normal.gearman.job");
+        $this->assertReceivedLogMessage($this->logFile, "Registering job: Acme\Bundle\ApiBundle\Worker\SomeWorker::myGearmanJob as normal.gearman.job");
 
         $gmc = $this->createGearmanClient();
         $gmc->doBackground('normal.gearman.job', 'work');
 
-        $this->assertReceivedGearmanMessage("Successfully finished normal.gearman.job");
+        $this->assertReceivedLogMessage($this->logFile, "Successfully finished normal.gearman.job");
     }
 
     /**
      * @test
      */
-    function shouldRetryAFailingJob()
+    function shouldRetryAFailingJobAndFireJobFailedEvent()
     {
-        $this->assertReceivedGearmanMessage("Registering job: Acme\ContactBundle\Worker\FailingWorker::myFailingGearmanJob as failing.gearman.job");
+        $this->assertReceivedLogMessage($this->logFile, "Registering job: Acme\ContactBundle\Worker\FailingWorker::myFailingGearmanJob as failing.gearman.job");
 
         $gmc = $this->createGearmanClient();
         $gmc->doBackground('failing.gearman.job', 'work');
 
-        $this->assertReceivedGearmanMessage("[Job failing.gearman.job] - failed when processing: work. Reason is: ups I failed");
-        $this->assertReceivedGearmanMessage("Number of retries left: 4");
-        $this->assertReceivedGearmanMessage("Number of retries left: 3");
-        $this->assertReceivedGearmanMessage("Number of retries left: 2");
-        $this->assertReceivedGearmanMessage("Number of retries left: 1");
-        $this->assertReceivedGearmanMessage("Number of retries left: 0");
+        $this->assertReceivedLogMessage($this->logFile, "[Job failing.gearman.job] - failed when processing: work. Reason is: ups I failed");
+        $this->assertReceivedLogMessage($this->logFile, "Number of retries left: 4");
+        $this->assertReceivedLogMessage($this->logFile, "Number of retries left: 3");
+        $this->assertReceivedLogMessage($this->logFile, "Number of retries left: 2");
+        $this->assertReceivedLogMessage($this->logFile, "Number of retries left: 1");
+        $this->assertReceivedLogMessage($this->logFile, "Number of retries left: 0");
+
+        $appLogFile = dirname($this->logFile) . '/app.log';
+        $this->assertReceivedLogMessage($appLogFile, "Job failing.gearman.job has failed, while processing: work");
     }
 
     private function createGearmanClient()
@@ -65,11 +71,11 @@ class JobQueueTest extends \PHPUnit_Framework_TestCase
         return $gmc;
     }
 
-    private function assertReceivedGearmanMessage($msg)
+    private function assertReceivedLogMessage($file, $msg)
     {
         $retries = 30; // travis might be slow, wait max 30 seconds
         do {
-            $result = stripos(file_get_contents($this->logFile), $msg) !== false;
+            $result = stripos(file_get_contents($file), $msg) !== false;
         } while (!$result && --$retries && sleep(1) !== false);
         $this->assertTrue($result, "Expected message: '{$msg}' was never received from gearman process");
     }

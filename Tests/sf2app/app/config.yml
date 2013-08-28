@@ -2,6 +2,13 @@
 framework:
     secret: "secret"
 
+monolog:
+    handlers:
+        main:
+            type: stream
+            path: "%kernel.logs_dir%/app.log"
+            level: error
+
 supertag_gearman:
     namespace: ""
     servers: "127.0.0.1:4730"
@@ -9,6 +16,7 @@ supertag_gearman:
 services:
     my.gearman.listener:
         class: Acme\Bundle\ApiBundle\Listener\GearmanListener
+        arguments: [ "@logger" ]
         tags:
-          - { name: supertag_gearman.job_failed_event, event: onJobFailed }
+          - { name: kernel.event_listener, event: supertag_gearman.job_failed_event, method: onJobFailed }
 
