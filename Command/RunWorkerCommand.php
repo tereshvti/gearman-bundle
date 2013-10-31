@@ -8,6 +8,8 @@ use Symfony\Bundle\FrameworkBundle\Command\ContainerAwareCommand;
 use Symfony\Component\Finder\Finder;
 use Symfony\Component\HttpFoundation\ParameterBag;
 use Supertag\Bundle\GearmanBundle\Event\JobFailedEvent;
+use Supertag\Bundle\GearmanBundle\Event\JobBeginEvent;
+use Supertag\Bundle\GearmanBundle\Event\JobEndEvent;
 use GearmanWorker;
 use GearmanJob;
 use RuntimeException, ReflectionClass, ReflectionMethod;
@@ -140,6 +142,9 @@ EOF
             $result = null;
             $hash = sha1($name.$gmj->workload());
             try {
+                $event = new JobBeginEvent($name, $job, $gmj->workload());
+                $disp->dispatch(JobBeginEvent::NAME, $event);
+
                 $result = call_user_func_array(array($worker, $job['method']), array($gmj, $output));
                 $retries->has($hash) && $retries->remove($hash);
             } catch (\Exception $e) {
@@ -163,6 +168,9 @@ EOF
                 }
                 return false;
             }
+            $event = new JobEndEvent($name, $job, $gmj->workload());
+            $disp->dispatch(JobEndEvent::NAME, $event);
+
             $gmj->sendComplete($result);
             return true;
         });

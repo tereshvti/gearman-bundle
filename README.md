@@ -134,6 +134,26 @@ class ContactController extends Controller
 }
 ```
 
+### Events
+
+Bundle fires few important events where you would like to hook in.
+
+- **JobBeginEvent** - before job execution, since php is not good at long running scripts. You might want to reopen your
+database connection and clear some statically shared cache..
+- **JobFailedEvent** - triggers when job failed all retries, you might want to persist it into database for further
+investigations or delayed rescheduling.
+- **JobEndEvent** - triggers when job finished execution within a single try.
+
+Listeners are created the usual way:
+
+``` yaml
+services:
+    my_event_listener:
+        class: AcmeBundle\EventListener\MyEventListener
+        tags:
+          - { name: kernel.event_listener, event: supertag_gearman.job_failed_event, method: onJobFailure }
+```
+
 ### Commands
 
 To check all registered jobs:
