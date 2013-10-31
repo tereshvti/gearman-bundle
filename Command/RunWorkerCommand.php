@@ -57,11 +57,10 @@ class RunWorkerCommand extends ContainerAwareCommand
     {
         $this
             ->setName(self::NAME)
-            ->setDescription('Run gearman workers from all bundles')
+            ->setDescription('Run gearman worker')
             ->setHelp(<<<EOF
-The <info>%command.name%</info> command registers all gearman workers for all
-kernel bundles based on their directory. Example a worker location is detected like:
-<comment>MyVendorName/BundleName/Worker/*.php</comment>
+The <info>%command.name%</info> command looks for gearman job commands from all
+kernel bundles and registers them as gearman jobs.
 
 <info>php %command.full_name%</info>
 <info>php %command.full_name% --env=prod</info>
