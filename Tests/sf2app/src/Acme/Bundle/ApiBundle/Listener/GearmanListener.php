@@ -15,6 +15,6 @@ class GearmanListener
 
     public function onJobFailed(JobFailedEvent $event)
     {
-        $this->logger->err("Job {$event->jobName} has failed, while processing: {$event->workload}");
+        $this->logger->err("Event: Job {$event->job->getName()} has failed");
     }
 }

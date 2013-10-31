@@ -3,17 +3,17 @@
 namespace Supertag\Bundle\GearmanBundle\Event;
 
 use Symfony\Component\EventDispatcher\Event;
+use Supertag\Bundle\GearmanBundle\Command\GearmanJobCommandInterface;
 
 class JobEndEvent extends Event
 {
     const NAME = 'supertag_gearman.job_end_event';
 
-    public $jobName, $metadata, $workload;
+    public $job, $workload;
 
-    public function __construct($jobName, array $metadata, $workload)
+    public function __construct(GearmanJobCommandInterface $job, $workload)
     {
-        $this->jobName = $jobName;
-        $this->metadata = $metadata;
+        $this->job = $job;
         $this->workload = $workload;
     }
 }

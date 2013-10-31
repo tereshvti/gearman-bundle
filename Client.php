@@ -11,12 +11,21 @@ use GearmanClient;
 class Client
 {
     private $gmc;
+    private $servers;
     private $namespace;
 
-    public function __construct(GearmanClient $gmc, $namespace)
+    public function __construct($servers, $namespace)
     {
-        $this->gmc = $gmc;
+        $this->servers = $servers;
         $this->namespace = $namespace;
+    }
+
+    private function connect()
+    {
+        if (null === $this->gmc) {
+            $this->gmc = new GearmanClient;
+            $this->gmc->addServers($this->servers);
+        }
     }
 
     /**
@@ -26,6 +35,7 @@ class Client
      */
     public function getGearmanClient()
     {
+        $this->connect();
         return $this->gmc;
     }
 
@@ -44,120 +54,129 @@ class Client
      * Schedules a background job
      *
      * @param string $jobName - the name of job to do. Will append st_version to prevent conflict
-     * @param string $workload - json encoded, serialized or simple string data for the job
+     * @param Workload $workload - command parameters for the job command
      * @return Resource - job handle
      */
-    public function doBackground($jobName, $workload)
+    public function doBackground($jobName, Workload $workload)
     {
-        return $this->gmc->doBackground($this->getJobName($jobName), $workload);
+        $this->connect();
+        return $this->gmc->doBackground($this->getJobName($jobName), (string)$workload);
     }
 
     /**
      * Schedules a high priority background job
      *
      * @param string $jobName - the name of job to do. Will append st_version to prevent conflict
-     * @param string $workload - json encoded, serialized or simple string data for the job
+     * @param Workload $workload - command parameters for the job command
      * @return Resource - job handle
      */
-    public function doHighBackground($jobName, $workload)
+    public function doHighBackground($jobName, Workload $workload)
     {
-        return $this->gmc->doHighBackground($this->getJobName($jobName), $workload);
+        $this->connect();
+        return $this->gmc->doHighBackground($this->getJobName($jobName), (string)$workload);
     }
 
     /**
      * Schedules a low priority background job
      *
      * @param string $jobName - the name of job to do. Will append st_version to prevent conflict
-     * @param string $workload - json encoded, serialized or simple string data for the job
+     * @param Workload $workload - command parameters for the job command
      * @return Resource - job handle
      */
-    public function doLowBackground($jobName, $workload)
+    public function doLowBackground($jobName, Workload $workload)
     {
-        return $this->gmc->doLowBackground($this->getJobName($jobName), $workload);
+        $this->connect();
+        return $this->gmc->doLowBackground($this->getJobName($jobName), (string)$workload);
     }
 
     /**
      * Schedules a normal priority job
      *
      * @param string $jobName - the name of job to do. Will append st_version to prevent conflict
-     * @param string $workload - json encoded, serialized or simple string data for the job
+     * @param Workload $workload - command parameters for the job command
      * @return string - status result
      */
-    public function doNormal($jobName, $workload)
+    public function doNormal($jobName, Workload $workload)
     {
-        return $this->gmc->doNormal($this->getJobName($jobName), $workload);
+        $this->connect();
+        return $this->gmc->doNormal($this->getJobName($jobName), (string)$workload);
     }
 
     /**
      * Schedules a high priority job
      *
      * @param string $jobName - the name of job to do. Will append st_version to prevent conflict
-     * @param string $workload - json encoded, serialized or simple string data for the job
+     * @param Workload $workload - command parameters for the job command
      * @return string - status result
      */
-    public function doHigh($jobName, $workload)
+    public function doHigh($jobName, Workload $workload)
     {
-        return $this->gmc->doHigh($this->getJobName($jobName), $workload);
+        $this->connect();
+        return $this->gmc->doHigh($this->getJobName($jobName), (string)$workload);
     }
 
     /**
      * Schedules a low priority job
      *
      * @param string $jobName - the name of job to do. Will append st_version to prevent conflict
-     * @param string $workload - json encoded, serialized or simple string data for the job
+     * @param Workload $workload - command parameters for the job command
      * @return string - status result
      */
-    public function doLow($jobName, $workload)
+    public function doLow($jobName, Workload $workload)
     {
-        return $this->gmc->doLow($this->getJobName($jobName), $workload);
+        $this->connect();
+        return $this->gmc->doLow($this->getJobName($jobName), (string)$workload);
     }
 
     /**
      * Add a normal priority task
      *
      * @param string $jobName - the name of job to do. Will append st_version to prevent conflict
-     * @param string $workload - json encoded, serialized or simple string data for the job
+     * @param Workload $workload - command parameters for the job command
      * @param mixed $context
      * @param string $unique - unique task identifier
      * @param boolean $background - whether to run in background or not
      * @return GearmanTask
      */
-    public function addTask($jobName, $workload, &$context, $unique, $background = true)
+    public function addTask($jobName, Workload $workload, &$context, $unique, $background = true)
     {
+        $this->connect();
         $method = 'addTask' . $background ? 'Background' : '';
-        return $this->gmc->{$method}($this->getJobName($jobName), $workload, $context, $unique);
+        return $this->gmc->{$method}($this->getJobName($jobName), (string)$workload, $context, $unique);
     }
 
     /**
      * Add a high priority task
      *
      * @param string $jobName - the name of job to do. Will append st_version to prevent conflict
-     * @param string $workload - json encoded, serialized or simple string data for the job
+     * @param Workload $workload - command parameters for the job command
      * @param mixed $context
      * @param string $unique - unique task identifier
      * @param boolean $background - whether to run in background or not
      * @return GearmanTask
      */
-    public function addTaskHigh($jobName, $workload, &$context, $unique, $background = true)
+    public function addTaskHigh($jobName, Workload $workload, &$context, $unique, $background = true)
     {
+        $this->connect();
         $method = 'addTaskHigh' . $background ? 'Background' : '';
-        return $this->gmc->{$method}($this->getJobName($jobName), $workload, $context, $unique);
+        return $this->gmc->{$method}($this->getJobName($jobName), (string)$workload, $context, $unique);
     }
 
     /**
      * Add a low priority task
      *
      * @param string $jobName - the name of job to do. Will append st_version to prevent conflict
-     * @param string $workload - json encoded, serialized or simple string data for the job
+     * @param Workload $workload - command parameters for the job command
      * @param mixed $context
      * @param string $unique - unique task identifier
      * @param boolean $background - whether to run in background or not
      * @return GearmanTask
      */
-    public function addTaskLow($jobName, $workload, &$context, $unique, $background = true)
+    public function addTaskLow($jobName, Workload $workload, &$context, $unique, $background = true)
     {
+        $this->connect();
         $method = 'addTaskLow' . $background ? 'Background' : '';
-        return $this->gmc->{$method}($this->getJobName($jobName), $workload, $context, $unique);
+        return $this->gmc->{$method}($this->getJobName($jobName), (string)$workload, $context, $unique);
     }
 
     /**
@@ -167,6 +186,7 @@ class Client
      */
     public function runTasks()
     {
+        $this->connect();
         return $this->gmc->runTasks();
     }
 }

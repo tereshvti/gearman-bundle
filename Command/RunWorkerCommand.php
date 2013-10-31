@@ -4,12 +4,16 @@ namespace Supertag\Bundle\GearmanBundle\Command;
 
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Process\ProcessBuilder;
+use Symfony\Component\Process\Process;
 use Symfony\Bundle\FrameworkBundle\Command\ContainerAwareCommand;
 use Symfony\Component\Finder\Finder;
 use Symfony\Component\HttpFoundation\ParameterBag;
 use Supertag\Bundle\GearmanBundle\Event\JobFailedEvent;
 use Supertag\Bundle\GearmanBundle\Event\JobBeginEvent;
 use Supertag\Bundle\GearmanBundle\Event\JobEndEvent;
+use Supertag\Bundle\GearmanBundle\Workload;
 use GearmanWorker;
 use GearmanJob;
 use RuntimeException, ReflectionClass, ReflectionMethod;
@@ -17,8 +21,6 @@ use RuntimeException, ReflectionClass, ReflectionMethod;
 class RunWorkerCommand extends ContainerAwareCommand
 {
     const NAME = 'supertag:gearman:run-worker';
-
-    const GEARMAN_JOB_ANNOTATION = 'Supertag\Bundle\GearmanBundle\Annotation\Job';
 
     /**
      * All collected gearman jobs
@@ -32,7 +34,21 @@ class RunWorkerCommand extends ContainerAwareCommand
      *
      * @var \Symfony\Component\HttpFoundation\ParameterBag
      */
-    private $retries;
+    public $retries;
+
+    /**
+     * Whether running in verbose mode
+     *
+     * @var boolean
+     */
+    public $verbose;
+
+    /**
+     * Current environment
+     *
+     * @var string
+     */
+    public $env;
 
     /**
      * {@inheritDoc}
@@ -58,158 +74,163 @@ EOF
      */
     protected function execute(InputInterface $input, OutputInterface $output)
     {
-        $workerFiles = array();
         foreach ($this->getContainer()->get('kernel')->getBundles() as $bundle) {
-            if (is_dir($workerDir = $bundle->getPath().'/Worker')) {
+            if (is_dir($cmdDir = $bundle->getPath().'/Command')) {
                 $finder = new Finder;
-                $finder->files()->in($workerDir)->name('*.php');
-                foreach ($finder as $workerFile) {
-                    $workerFiles[] = $workerFile->getRealPath();
+                $finder->files()->in($cmdDir)->name('*Command.php');
+                $prefix = $bundle->getNamespace().'\\Command';
+                foreach ($finder as $file) {
+                    $ns = $prefix;
+                    if ($relativePath = $file->getRelativePath()) {
+                        $ns .= '\\'.strtr($relativePath, '/', '\\');
+                    }
+                    $class = $ns.'\\'.$file->getBasename('.php');
+                    $r = new ReflectionClass($class);
+                    $ok = $r->isSubclassOf('Symfony\\Component\\Console\\Command\\Command')
+                        && !$r->isAbstract() && !$r->getConstructor()->getNumberOfRequiredParameters()
+                        && $r->implementsInterface('Supertag\\Bundle\\GearmanBundle\\Command\\GearmanJobCommandInterface');
+                    // if is gearman job command
+                    if ($ok) {
+                        $job = new $class; // will init configure for command
+                        $this->jobs[$job->getName()] = $job;
+                    }
                 }
             }
         }
-        if (empty($workerFiles)) {
-            throw new RuntimeException("Could not find any workers in any of registered bundles..");
+        if (!$this->jobs) {
+            throw new RuntimeException("Could not find any gearman job commands in any of registered bundles..");
         }
 
+        $this->verbose = $input->getOption('verbose');
+        $this->env = $input->getOption('env');
         $this->retries = new ParameterBag;
         $gmworker = new GearmanWorker;
         $gmworker->addServers($this->getContainer()->getParameter('supertag_gearman.servers'));
 
-        foreach ($workerFiles as $workerFilename) {
-            $refl = new ReflectionClass($this->readWorkerClassName($workerFilename));
-            $this->registerWorker($refl, $gmworker, $output);
+        foreach ($this->jobs as $job) {
+            $this->registerJob($output, $gmworker, $job);
         }
 
         while ($gmworker->work()) {}
     }
 
     /**
-     * Scans worker class for jobs
+     * Registers a gearman job
      *
-     * @param \ReflectionClass $worker
-     * @param GearmanWorker $gmw
      * @param OutputInterface $output
-     * @throws RuntimeException - if job name is already registered
-     */
-    private function registerWorker(ReflectionClass $worker, GearmanWorker $gmw, OutputInterface $output)
-    {
-        $reader = $this->getContainer()->get('annotation_reader');
-        $workerInst = null;
-        foreach ($worker->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
-            if ($job = $reader->getMethodAnnotation($method, self::GEARMAN_JOB_ANNOTATION)) {
-                if (isset($this->jobs[$job->name])) {
-                    throw new RuntimeException("Job: {$job->name} was already registered in worker: {$this->jobs[$job->name]['class']}");
-                }
-                $this->jobs[$job->name] = array(
-                    'description' => $job->description,
-                    'retries' => intval($job->retries),
-                    'class' => $worker->getName(),
-                    'method' => $method->getName(),
-                );
-                if (null === $workerInst) {
-                    $workerInst = $worker->newInstance();
-                    if ($worker->implementsInterface('Symfony\Component\DependencyInjection\ContainerAwareInterface')) {
-                        $workerInst->setContainer($this->getContainer());
-                    }
-                }
-                $this->registerWorkerJob($workerInst, $job->name, $gmw, $output);
-            }
-        }
-    }
-
-    /**
-     * Registers a gearman job. Implements retry mechanism
-     * when job throws an exception. Otherwise it would force
-     * this command to exit.
-     *
-     * @param object $worker - worker class instance
-     * @param string $name - job name
      * @param GearmanWorker $gmw
-     * @param OutputInterface $output
+     * @param GearmanJobCommandInterface $job
      */
-    private function registerWorkerJob($worker, $name, GearmanWorker $gmw, OutputInterface $output)
+    private function registerJob(OutputInterface $output, GearmanWorker $gmw, GearmanJobCommandInterface $job)
     {
-        $job = $this->jobs[$name];
         $disp = $this->getContainer()->get('event_dispatcher');
         $gmc = $this->getContainer()->get('supertag_gearman.client');
-        $prefixedJobName = $gmc->getJobName($name);
-        $retries = $this->retries;
+        $pname = $gmc->getJobName($job->getName());
 
-        $output->writeLn("Registering job: <info>{$job['class']}::{$job['method']}</info> as <comment>{$name}</comment>");
+        $now = date('Y-m-d H:i:s');
+        $output->writeLn("{$now} -> Registering job: <comment>{$job->getName()}</comment>");
 
-        $gmw->addFunction($prefixedJobName, function(GearmanJob $gmj) use ($job, $name, $gmc, $output, $worker, $retries, $disp) {
+        $self = $this;
+        $gmw->addFunction($pname, function(GearmanJob $gmj) use ($job, $gmc, $output, $disp, $self) {
             $result = null;
-            $hash = sha1($name.$gmj->workload());
+            $hash = sha1($job->getName() . $gmj->workload());
+
             try {
-                $event = new JobBeginEvent($name, $job, $gmj->workload());
+                $event = new JobBeginEvent($job, $gmj->workload());
                 $disp->dispatch(JobBeginEvent::NAME, $event);
 
-                $result = call_user_func_array(array($worker, $job['method']), array($gmj, $output));
-                $retries->has($hash) && $retries->remove($hash);
+                // will validate the input arguments and options
+                $input = new ArrayInput($data = unserialize($gmj->workload()), $job->getDefinition());
+                // convert parameters to string, console v2.2 does not have to string conversion yet
+                $params = $self->prepareParameters($data);
+                // build job command
+                $processBuilder = $self->getCommandProcessBuilder()->add($job->getName());
+                array_walk($params, array($processBuilder, 'add'));
+                $process = $processBuilder->getProcess();
+                $cmd = $self->commandRepresentation($job->getName(), $data);
+                $output->writeLn(date('Y-m-d H:i:s') . " -> Running job command: {$cmd}");
+
+                // output read callback
+                $cb = function($type, $data) use($output) {
+                    $output->writeLn($data);
+                };
+                // run the job command
+                if (0 !== $process->run($cb)) {
+                    throw new RuntimeException("Failed while processing..");
+                }
+                // cleanup retries
+                $self->retries->has($hash) && $self->retries->remove($hash);
             } catch (\Exception $e) {
-                $msg = "<error>[Job {$name}]</error> - failed when processing: </info>" . $gmj->workload()."</info>. ";
+                $cmd = $self->commandRepresentation($job->getName(), unserialize($gmj->workload()));
+                $msg = "<error>Failed</error> when processing: <info>{$cmd}</info>. ";
                 $msg .= "Reason is: <comment>" . $e->getMessage()."</comment>. ";
                 $gmj->sendFail();
                 // for retries we use a specific hash to determine how many retries were
                 // applied already. hash is generated from {jobName}{workload} sha-1
-                $numRetriesLeft = $retries->has($hash) ? $retries->get($hash) : $job['retries'];
+                $numRetriesLeft = $self->retries->has($hash) ? $self->retries->get($hash) : $job->getNumRetries();
                 $msg .= "Number of retries left: <info>".($numRetriesLeft - 1)."</info>";
-                $output->writeLn($msg);
+                $output->writeLn(date('Y-m-d H:i:s') . ' -> ' . $msg);
                 if ($numRetriesLeft > 1) {
-                    $retries->set($hash, $numRetriesLeft - 1);
+                    $self->retries->set($hash, $numRetriesLeft - 1);
                     // reschedule job, always in low priority background
-                    $gmc->doLowBackground($name, $gmj->workload());
+                    $gmc->doLowBackground($job->getName(), new Workload(unserialize($gmj->workload())));
                 } else {
-                    $retries->remove($hash);
+                    $self->retries->remove($hash);
                     // fire an event to take some action with failed job
-                    $event = new JobFailedEvent($name, $job, $gmj->workload(), $e);
+                    $event = new JobFailedEvent($job, $gmj->workload(), $e);
                     $disp->dispatch(JobFailedEvent::NAME, $event);
                 }
                 return false;
             }
-            $event = new JobEndEvent($name, $job, $gmj->workload());
+            $event = new JobEndEvent($job, $gmj->workload());
             $disp->dispatch(JobEndEvent::NAME, $event);
 
-            $gmj->sendComplete($result);
+            $gmj->sendComplete(null);
             return true;
         });
     }
 
-    /**
-     * Reads tokenized php file and extracts class name
-     *
-     * @param string $filename
-     * @return string
-     * @throws RuntimeException - if fails to find a class name
-     */
-    private function readWorkerClassName($filename)
+    public function getCommandProcessBuilder()
     {
-        $codeTokens = token_get_all(file_get_contents($filename));
-        foreach ($codeTokens as $codeTokenIndex => $codeTokenValue) {
-            if (is_array($codeTokenValue)) {
-                list($codeTokenType, $codeTokenContent) = $codeTokenValue;
-                if (!isset($className) && T_CLASS === $codeTokenType) {
-                    $className = $codeTokens[$codeTokenIndex + 2][1];
-                }
-                if (!isset($namespace) && T_NAMESPACE === $codeTokenType) {
-                    $namespace = '';
-                    for ($i = 2; true; ++ $i) {
-                        $namespaceToken = $codeTokens[$codeTokenIndex + $i];
-                        if (is_array($namespaceToken)) {
-                            $namespace .= $namespaceToken[1];
-                        }
-                        if (is_string($namespaceToken)) {
-                            break;
-                        }
-                    }
-                }
-            }
-            if (isset($className) && isset($namespace)) {
-                return implode('\\', array($namespace, $className));
-            }
+        $pb = new ProcessBuilder();
+
+        // PHP wraps the process in "sh -c" by default, but we need to control
+        // the process directly.
+        if ( ! defined('PHP_WINDOWS_VERSION_MAJOR')) {
+            $pb->add('exec');
         }
 
-        throw new RuntimeException("Class name could not be determined for worker file: {$filename}");
+        $pb
+            ->add('php')
+            ->add($this->getContainer()->getParameter('kernel.root_dir').'/console')
+            ->add('--env='.$this->env)
+        ;
+
+        if ($this->verbose) {
+            $pb->add('--verbose');
+        }
+
+        return $pb;
+    }
+
+    public function prepareParameters(array $data)
+    {
+        $params = array();
+        $escape = function($token) {
+            return preg_match('{^[\w-]+$}', $token) ? $token : escapeshellarg($token);
+        };
+        foreach ($data as $param => $val) {
+            if ($param && '-' === $param[0]) {
+                $params[] = $param . ('' != $val ? '='.$escape($val) : '');
+            } else {
+                $params[] = $escape($val);
+            }
+        }
+        return $params;
+    }
+
+    public function commandRepresentation($name, array $params)
+    {
+        return $name . ' ' . implode(' ', $this->prepareParameters($params)) . ' --env=' . $this->env;
     }
 }
