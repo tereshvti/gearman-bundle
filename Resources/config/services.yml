@@ -1,12 +1,6 @@
 services:
 
-    supertag_gearman.core_client:
-        class: GearmanClient
-        public: false
-        calls:
-            - [ addServers, [ %supertag_gearman.servers% ] ]
-
     supertag_gearman.client:
         class: Supertag\Bundle\GearmanBundle\Client
-        arguments: [ "@supertag_gearman.core_client", "%supertag_gearman.namespace%" ]
+        arguments: [ "%supertag_gearman.servers%", "%supertag_gearman.namespace%" ]
 

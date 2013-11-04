@@ -2,6 +2,8 @@
 
 namespace Supertag\Bundle\GearmanBundle\Tests\Functional;
 
+use Supertag\Bundle\GearmanBundle\Workload;
+
 class JobQueueTest extends \PHPUnit_Framework_TestCase
 {
     private $logFile, $pid;
@@ -35,12 +37,32 @@ class JobQueueTest extends \PHPUnit_Framework_TestCase
      */
     function shouldRunScheduledJob()
     {
-        $this->assertReceivedLogMessage($this->logFile, "Registering job: Acme\Bundle\ApiBundle\Worker\SomeWorker::myGearmanJob as normal.gearman.job");
+        $this->assertReceivedLogMessage($this->logFile, "Registering job: job:deploy-project");
 
         $gmc = $this->createGearmanClient();
-        $gmc->doBackground('normal.gearman.job', 'work');
+        $gmc->doBackground('job:deploy-project', new Workload(array(
+            '--force' => null,
+            '5'
+        )));
 
-        $this->assertReceivedLogMessage($this->logFile, "Successfully finished normal.gearman.job");
+        $this->assertReceivedLogMessage($this->logFile, "Successfully finished project deploy");
+    }
+
+    /**
+     * @test
+     */
+    function shouldFailWhenJobInputIsNotValid()
+    {
+        $this->assertReceivedLogMessage($this->logFile, "Registering job: job:deploy-project");
+
+        $gmc = $this->createGearmanClient();
+        $gmc->doBackground('job:deploy-project', new Workload);
+
+        $this->assertReceivedLogMessage($this->logFile, "Not enough arguments.. Number of retries left: 4");
+        $this->assertReceivedLogMessage($this->logFile, "Not enough arguments.. Number of retries left: 3");
+        $this->assertReceivedLogMessage($this->logFile, "Not enough arguments.. Number of retries left: 2");
+        $this->assertReceivedLogMessage($this->logFile, "Not enough arguments.. Number of retries left: 1");
+        $this->assertReceivedLogMessage($this->logFile, "Not enough arguments.. Number of retries left: 0");
     }
 
     /**
@@ -48,20 +70,18 @@ class JobQueueTest extends \PHPUnit_Framework_TestCase
      */
     function shouldRetryAFailingJobAndFireJobFailedEvent()
     {
-        $this->assertReceivedLogMessage($this->logFile, "Registering job: Acme\ContactBundle\Worker\FailingWorker::myFailingGearmanJob as failing.gearman.job");
+        $this->assertReceivedLogMessage($this->logFile, "Registering job: job:failing");
 
         $gmc = $this->createGearmanClient();
-        $gmc->doBackground('failing.gearman.job', 'work');
+        $gmc->doBackground('job:failing', new Workload);
 
-        $this->assertReceivedLogMessage($this->logFile, "[Job failing.gearman.job] - failed when processing: work. Reason is: ups I failed");
-        $this->assertReceivedLogMessage($this->logFile, "Number of retries left: 4");
-        $this->assertReceivedLogMessage($this->logFile, "Number of retries left: 3");
-        $this->assertReceivedLogMessage($this->logFile, "Number of retries left: 2");
+        $this->assertReceivedLogMessage($this->logFile, "Failed when processing: job:failing  --env=test. Reason is: Failed while processing...");
         $this->assertReceivedLogMessage($this->logFile, "Number of retries left: 1");
         $this->assertReceivedLogMessage($this->logFile, "Number of retries left: 0");
 
         $appLogFile = dirname($this->logFile) . '/app.log';
-        $this->assertReceivedLogMessage($appLogFile, "Job failing.gearman.job has failed, while processing: work");
+        // test event
+        $this->assertReceivedLogMessage($appLogFile, "Event: Job job:failing has failed");
     }
 
     private function createGearmanClient()
@@ -73,10 +93,11 @@ class JobQueueTest extends \PHPUnit_Framework_TestCase
 
     private function assertReceivedLogMessage($file, $msg)
     {
-        $retries = 30; // travis might be slow, wait max 30 seconds
+        $retries = 3; // travis might be slow, wait max 30 seconds
+        $content = null;
         do {
-            $result = stripos(file_get_contents($file), $msg) !== false;
+            $result = stripos($content = file_get_contents($file), $msg) !== false;
         } while (!$result && --$retries && sleep(1) !== false);
-        $this->assertTrue($result, "Expected message: '{$msg}' was never received from gearman process");
+        $this->assertTrue($result, "Expected message: '{$msg}' was never received from gearman process, output was: ".$content);
     }
 }

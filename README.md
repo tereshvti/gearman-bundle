@@ -11,7 +11,8 @@ Symfony2 bundle to manage and monitor PHP gearman jobs and queue.
 projects deployed using gearman queue. It also simplifies a deployment process.
 - Can generate you a supervisor daemon conf to ensure your worker gets respawned in case of fatal error in php.
 - Has a gearman queue monitor
-- Maps jobs based on Worker directory in any bundle and reads annotions for job details.
+- Since php is not good with long running processes, we run jobs as console commands. It can be run manually too if
+gearman is dropped.
 
 ## Installation
 
@@ -63,51 +64,58 @@ Should contain:
 ## Usage
 
 Assuming you have **gearman** service running.
-In any of your bundles you can add workers with job definitions:
+In any of your bundles you can add standard symfony2 console commands, which also implements a **GearmanJobCommandInterface**.
 
 ``` php
 <?php
 
-namespace Supertag\Bundle\ContactBundle\Worker;
+namespace Supertag\Bundle\ContactBundle\Command;
 
-use Symfony\Component\DependencyInjection\ContainerAware;
+use Symfony\Bundle\FrameworkBundle\Command\ContainerAwareCommand;
 use Symfony\Component\Console\Output\OutputInterface;
-use GearmanJob;
+use Supertag\Bundle\GearmanBundle\Command\GearmanJobCommandInterface;
 
-use Supertag\Bundle\GearmanBundle\Annotation as Gearman;
-
-class MailingWorker extends ContainerAware
+class SendMessageCommand extends ContainerAwareCommand implements GearmanJobCommandInterface
 {
+    const NAME = 'job:send-message';
+
     /**
-     * @Gearman\Job(
-     *   name="supertag.mailing.send_contact_email",
-     *   retries=5,
-     *   description="Sends a contact email message"
-     * )
+     * {@inheritDoc}
      */
-    public function sendContactEmail(GearmanJob $job, OutputInterface $output)
+    public function getNumRetries()
     {
-        $data = json_decode($job->workload()); // assume job data is json encoded, can be serialized or be a simple string
-        $output->writeLn("Attempt to send a contact message from <comment>{$data['sender_email']}</comment>");
-        $message = \Swift_Message::newInstance()
-            ->setSubject('A message from contact form')
-            ->setFrom($data['sender_email'])
-            ->setTo('info@supert.ag')
-            ->setBody(
-                $this->renderView(
-                    'SupertagContactBundle:Email:contact.txt.twig',
-                    array('body' => $data['body'])
-                )
-            )
-        ;
-        // any exception thrown will cause a retry
-        $this->container->get('mailer')->send($message);
-        $output->writeLn("A contact message was successfuly sent from <comment>{$data['sender_email']}</comment>");
+        return 5;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    protected function configure()
+    {
+        $this
+            ->setName(self::NAME)
+            ->setDescription('Sends a contact message')
+            ->addArgument('from', InputArgument::REQUIRED, 'From user id')
+            ->addArgument('template', InputArgument::REQUIRED, 'Email template')
+            ->addOption('email-sender', null, InputOption::VALUE_NONE, 'Sends the same email to sender too')
+            ->setHelp(<<<EOF
+The <info>%command.name%</info> sends an email message
+
+<info>php %command.full_name% 5 contact_email --email-sender</info>
+EOF
+        );
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    protected function execute(InputInterface $input, OutputInterface $output)
+    {
+        //... load the user and send a message based on input arguments
+        $output->writeLn("A contact message was successfuly sent");
     }
 }
 ```
-
-**NOTE:** worker class is inside **Worker** directory.
 
 We have defined a simple contact message email sending job. Now we can schedule it anywhere, example:
 
@@ -117,30 +125,33 @@ We have defined a simple contact message email sending job. Now we can schedule 
 namespace Supertag\Bundle\ContactBundle\Controller;
 
 use Symfony\Bundle\FrameworkBundle\Controller\Controller;
+use Supertag\Bundle\GearmanBundle\Workload;
 
 class ContactController extends Controller
 {
     public function contactAction()
     {
         // assuming some actions are performed to get sender data
-        $data = array(
-            "sender_email" => "sender@example.com",
-            "body" => "Hello there !",
-        );
+        // create a workload for the job. Which is a list of parameters for the job command
+        $workload = new Workload(array(5, "contact_email", "--email-sender" => null));
         // schedule a low priority background job
-        $this->get("supertag_gearman.client")->doLowBackground("supertag.mailing.send_contact_email", json_encode($data));
-        // the action will finish without any blocking
+        $this->get("supertag_gearman.client")->doLowBackground("job:send-message", $workload);
+        // the action will finish without blocking
     }
 }
 ```
 
+**NOTE:** Workload takes all parameters for the job command. In case if job required parameters are missing or they are
+misspeled a job will note you about it. Any exceptions or php errors will trigger job to fail, proceed a retry.
+
+In order to manage jobs which has failed all retries, see Events below.
+
 ### Events
 
-Bundle fires few important events where you would like to hook in.
+Bundle fires few important events where you would like to hook in some cases.
 
-- **JobBeginEvent** - before job execution, since php is not good at long running scripts. You might want to reopen your
-database connection and clear some statically shared cache..
-- **JobFailedEvent** - triggers when job failed all retries, you might want to persist it into database for further
+- **JobBeginEvent** - fires before job execution.
+- **JobFailedEvent** - triggers when job fails all retries, you might want to persist it into database for further
 investigations or delayed rescheduling.
 - **JobEndEvent** - triggers when job finished execution within a single try.
 
@@ -156,13 +167,7 @@ services:
 
 ### Commands
 
-To check all registered jobs:
-
-    php app/console supertag:gearman:list-jobs
-
-You should see your jobs listed similar to this:
-
-![Screenshot of listed gearman jobs](https://raw.github.com/supertag/GearmanBundle/master/Resources/screenshots/job_list.png)
+To check all registered jobs you can use a standard console command tool.
 
 To start gearman worker, run:
 
@@ -186,6 +191,26 @@ You can monitor a gearman queue:
 If you wish to have a script which would ping you in case if queue gets overloaded, you could implement it based on that
 command to poll status of gearman queue and check if jobs are piling up. The solution to this hardly can be abstracted,
 it would be best to customize it individually.
+
+### Workers
+
+To run one or more php worker processes, would recommend to use [supervisord](https://pypi.python.org/pypi/supervisor).
+It will help to manage all workers - respawn ones which dies for unexpected reasons.
+
+If easy_install is available, just run as root. Otherwise see the installation guide.
+
+    easy_install supervisor
+
+Generate a configuration files for **2** workers which will run as user **www-data**:
+
+    php app/console supertag:gearman:generate-supervisor-config www-data -e prod --num-workers=2
+
+You can now start the supervised workers:
+
+    supervisord -c worker-supervisor.conf
+
+It will put logs in **app/logs** directory for stderr and stdout output. Also will create a pid file in base directory
+of your symfony2 project. Using that pid, you can easily kill the running worker.
 
 ## Run Tests
 
