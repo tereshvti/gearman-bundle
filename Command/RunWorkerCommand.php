@@ -133,25 +133,28 @@ EOF
         $gmw->addFunction($pname, function(GearmanJob $gmj) use ($job, $gmc, $output, $disp, $self) {
             $result = null;
             $hash = sha1($job->getName() . $gmj->workload());
+            $lastOutput = $commandArgs = $cmd = '';
 
             try {
                 $event = new JobBeginEvent($job, $gmj->workload());
                 $disp->dispatch(JobBeginEvent::NAME, $event);
 
+                $jobArgs = unserialize($gmj->workload());
+                $commandArgs = $self->prepareCommandArguments($jobArgs);
                 // will validate the input arguments and options
-                $input = new ArrayInput($data = unserialize($gmj->workload()), $job->getDefinition());
+                $input = new ArrayInput($jobArgs, $job->getDefinition());
                 // convert parameters to string, console v2.2 does not have to string conversion yet
-                $params = $self->prepareParameters($data);
                 // build job command
                 $processBuilder = $self->getCommandProcessBuilder()->add($job->getName());
-                array_walk($params, array($processBuilder, 'add'));
+                array_walk($commandArgs, array($processBuilder, 'add'));
                 $process = $processBuilder->getProcess();
-                $cmd = $self->commandRepresentation($job->getName(), $data);
+                $cmd = $job->getName() . ' ' . implode(' ', $commandArgs);
                 $output->writeLn(date('Y-m-d H:i:s') . " -> Running job command: {$cmd}");
 
                 // output read callback
-                $cb = function($type, $data) use($output) {
-                    $output->writeLn($data);
+                $cb = function($type, $text) use($output, &$lastOutput) {
+                    $output->writeLn($text);
+                    $lastOutput .= $text;
                 };
                 // run the job command
                 if (0 !== $process->run($cb)) {
@@ -160,9 +163,7 @@ EOF
                 // cleanup retries
                 $self->retries->has($hash) && $self->retries->remove($hash);
             } catch (\Exception $e) {
-                $cmd = $self->commandRepresentation($job->getName(), unserialize($gmj->workload()));
-                $msg = "<error>Failed</error> when processing: <info>{$cmd}</info>. ";
-                $msg .= "Reason is: <comment>" . $e->getMessage()."</comment>. ";
+                $msg = "<error>Failed:</error> " . $e->getMessage() . ": <info>{$cmd}</info>. ";
                 $gmj->sendFail();
                 // for retries we use a specific hash to determine how many retries were
                 // applied already. hash is generated from {jobName}{workload} sha-1
@@ -176,7 +177,8 @@ EOF
                 } else {
                     $self->retries->remove($hash);
                     // fire an event to take some action with failed job
-                    $event = new JobFailedEvent($job, $gmj->workload(), $e);
+                    $lastOutput = 'Exception -> ' . $e->getMessage() . " with last output:\n\n" . $lastOutput;
+                    $event = new JobFailedEvent($job, $commandArgs, $lastOutput);
                     $disp->dispatch(JobFailedEvent::NAME, $event);
                 }
                 return false;
@@ -199,20 +201,10 @@ EOF
             $pb->add('exec');
         }
 
-        $pb
-            ->add('php')
-            ->add($this->getContainer()->getParameter('kernel.root_dir').'/console')
-            ->add('--env='.$this->env)
-        ;
-
-        if ($this->verbose) {
-            $pb->add('--verbose');
-        }
-
-        return $pb;
+        return $pb->add('php')->add($this->getContainer()->getParameter('kernel.root_dir').'/console');
     }
 
-    public function prepareParameters(array $data)
+    public function prepareCommandArguments(array $data)
     {
         $params = array();
         $escape = function($token) {
@@ -225,11 +217,10 @@ EOF
                 $params[] = $escape($val);
             }
         }
+        $params[] = '--env='.$this->env;
+        if ($this->verbose) {
+            $params[] = '--verbose';
+        }
         return $params;
-    }
-
-    public function commandRepresentation($name, array $params)
-    {
-        return $name . ' ' . implode(' ', $this->prepareParameters($params)) . ' --env=' . $this->env;
     }
 }

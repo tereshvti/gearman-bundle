@@ -58,11 +58,11 @@ class JobQueueTest extends \PHPUnit_Framework_TestCase
         $gmc = $this->createGearmanClient();
         $gmc->doBackground('job:deploy-project', new Workload);
 
-        $this->assertReceivedLogMessage($this->logFile, "Not enough arguments.. Number of retries left: 4");
-        $this->assertReceivedLogMessage($this->logFile, "Not enough arguments.. Number of retries left: 3");
-        $this->assertReceivedLogMessage($this->logFile, "Not enough arguments.. Number of retries left: 2");
-        $this->assertReceivedLogMessage($this->logFile, "Not enough arguments.. Number of retries left: 1");
-        $this->assertReceivedLogMessage($this->logFile, "Not enough arguments.. Number of retries left: 0");
+        $this->assertReceivedLogMessage($this->logFile, "Failed: Not enough arguments.: . Number of retries left: 4");
+        $this->assertReceivedLogMessage($this->logFile, "Failed: Not enough arguments.: . Number of retries left: 3");
+        $this->assertReceivedLogMessage($this->logFile, "Failed: Not enough arguments.: . Number of retries left: 2");
+        $this->assertReceivedLogMessage($this->logFile, "Failed: Not enough arguments.: . Number of retries left: 1");
+        $this->assertReceivedLogMessage($this->logFile, "Failed: Not enough arguments.: . Number of retries left: 0");
     }
 
     /**
@@ -75,7 +75,7 @@ class JobQueueTest extends \PHPUnit_Framework_TestCase
         $gmc = $this->createGearmanClient();
         $gmc->doBackground('job:failing', new Workload);
 
-        $this->assertReceivedLogMessage($this->logFile, "Failed when processing: job:failing  --env=test. Reason is: Failed while processing...");
+        $this->assertReceivedLogMessage($this->logFile, "Failed: Failed while processing..: job:failing --env=test");
         $this->assertReceivedLogMessage($this->logFile, "Number of retries left: 1");
         $this->assertReceivedLogMessage($this->logFile, "Number of retries left: 0");
 
@@ -93,7 +93,7 @@ class JobQueueTest extends \PHPUnit_Framework_TestCase
 
     private function assertReceivedLogMessage($file, $msg)
     {
-        $retries = 3; // travis might be slow, wait max 30 seconds
+        $retries = 10; // travis might be slow, wait max 10 seconds
         $content = null;
         do {
             $result = stripos($content = file_get_contents($file), $msg) !== false;
