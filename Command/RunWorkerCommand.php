@@ -133,7 +133,7 @@ EOF
         $gmw->addFunction($pname, function(GearmanJob $gmj) use ($job, $gmc, $output, $disp, $self) {
             $result = null;
             $hash = sha1($job->getName() . $gmj->workload());
-            $lastOutput = $commandArgs = $cmd = '';
+            $lastOutput = $cmd = '';
 
             try {
                 $event = new JobBeginEvent($job, $gmj->workload());
@@ -178,7 +178,8 @@ EOF
                     $self->retries->remove($hash);
                     // fire an event to take some action with failed job
                     $lastOutput = 'Exception -> ' . $e->getMessage() . " with last output:\n\n" . $lastOutput;
-                    $event = new JobFailedEvent($job, $commandArgs, $lastOutput);
+                    $args = $self->prepareCommandArguments(unserialize($gmj->workload()), false);
+                    $event = new JobFailedEvent($job, $args, $lastOutput);
                     $disp->dispatch(JobFailedEvent::NAME, $event);
                 }
                 return false;
@@ -204,7 +205,7 @@ EOF
         return $pb->add('php')->add($this->getContainer()->getParameter('kernel.root_dir').'/console');
     }
 
-    public function prepareCommandArguments(array $data)
+    public function prepareCommandArguments(array $data, $withEnv = true)
     {
         $params = array();
         $escape = function($token) {
@@ -217,9 +218,11 @@ EOF
                 $params[] = $escape($val);
             }
         }
-        $params[] = '--env='.$this->env;
-        if ($this->verbose) {
-            $params[] = '--verbose';
+        if ($withEnv) {
+            $params[] = '--env='.$this->env;
+            if ($this->verbose) {
+                $params[] = '--verbose';
+            }
         }
         return $params;
     }
