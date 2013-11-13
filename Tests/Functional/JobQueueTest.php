@@ -84,6 +84,26 @@ class JobQueueTest extends \PHPUnit_Framework_TestCase
         $this->assertReceivedLogMessage($appLogFile, "Event: Job job:failing has failed");
     }
 
+    /**
+     * @test
+     */
+    function shouldEscapeCommandInputArgumentsAndOptions()
+    {
+        $this->assertReceivedLogMessage($this->logFile, "Registering job: job:purify-input");
+
+        $gmc = $this->createGearmanClient();
+        $gmc->doBackground('job:purify-input', new Workload(array(
+            "my entity class", // entity argument, should be escaped
+            "--fields" => "field1 field2", // fields option, should be escaped
+            "--opt" => "option", // opt option, value does not need escaping
+        )));
+
+        $this->assertReceivedLogMessage($this->logFile, "Successfully finished purified");
+        $this->assertReceivedLogMessage($this->logFile, "Received argument entity as my entity class");
+        $this->assertReceivedLogMessage($this->logFile, "Received option fields as field1 field2");
+        $this->assertReceivedLogMessage($this->logFile, "Received option opt as option");
+    }
+
     private function createGearmanClient()
     {
         $gmc = new \GearmanClient;

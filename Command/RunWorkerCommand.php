@@ -208,12 +208,9 @@ EOF
     public function prepareCommandArguments(array $data, $withEnv = true)
     {
         $params = array();
-        $escape = function($token) {
-            return preg_match('{^[\w-]+$}', $token) ? $token : escapeshellarg($token);
-        };
         foreach ($data as $param => $val) {
             if ($param && '-' === $param[0]) {
-                $params[] = $param . ('' != $val ? '='.$escape($val) : '');
+                $params[] = $param . ('' != $val ? '='.$val : '');
             } else {
                 $params[] = $val;
             }
