@@ -212,6 +212,19 @@ You can now start the supervised workers:
 It will put logs in **app/logs** directory for stderr and stdout output. Also will create a pid file in base directory
 of your symfony2 project. Using that pid, you can easily kill the running worker.
 
+#### Graceful worker stop
+
+If you are using supervisord there is a command which can be used to stop active process.
+For instance on new deployment you might probably want to kill previous release workers, because new release
+might have new jobs available. You won't have troubles if the old workers will be running, since they do run commands
+as separate processes.
+
+To safely stop workers run:
+
+    php app/console supertag:gearman:stop-worker --env=prod
+
+In case if different worker manager is used, you can extend this command and override **doKill** method.
+
 ## Run Tests
 
 To run tests you will need to have **gearman** installed on your system.
