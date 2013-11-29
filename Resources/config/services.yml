@@ -1,6 +1,8 @@
-services:
+parameters:
+    supertag_gearman.client.class: Supertag\Bundle\GearmanBundle\Client
 
+services:
     supertag_gearman.client:
-        class: Supertag\Bundle\GearmanBundle\Client
-        arguments: [ "%supertag_gearman.servers%", "%supertag_gearman.namespace%" ]
+        class: %supertag_gearman.client.class%
+        arguments: [ %supertag_gearman.servers%, %supertag_gearman.namespace% ]
 
