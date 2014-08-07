@@ -148,6 +148,7 @@ EOF
                 $processBuilder = $self->getCommandProcessBuilder()->add($job->getName());
                 array_walk($commandArgs, array($processBuilder, 'add'));
                 $process = $processBuilder->getProcess();
+                $process->setTimeout(null);
                 $cmd = $job->getName() . ' ' . implode(' ', $commandArgs);
                 $output->writeLn(date('Y-m-d H:i:s') . " -> Running job command: {$cmd}");
 
